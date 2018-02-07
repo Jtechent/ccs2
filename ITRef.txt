@@ -1,0 +1,330 @@
+﻿Conflict Check System
+v2006.04.15
+	Reference Manual
+
+(by Rory A. Apperson)
+________________
+
+
+Table of Contents
+
+
+Chapter 1:  Introduction and Setup        3
+Conflict Check System Component Definitions        3
+Installation and Configuration        5
+Active Directory Setup        5
+Database Setup        6
+Message-Handling (Main Component) Setup        7
+New Conflict Check Form        8
+Chapter 2: Operation        10
+Conflict Check Generation        10
+Conflict Check Responses        10
+Reporting and Follow-up        11
+Administrative Functions        11
+Scheduled Scripts        12
+Appendix A:  Message-Handling Component        13
+Overview        13
+Registry Settings        14
+Scripts and Support Files        14
+Appendix B:  Anatomy of a Report        15
+Sample Report        15
+Report Components        16
+Appendix C:  Anatomy of the Conflict Check Form        17
+Overview        17
+Form Components        18
+Appendix D:  Tips & Troubleshooting        19
+
+
+________________
+
+
+Chapter 1:  Introduction and Setup
+
+
+The Conflict Check System is an interactive, automated system designed to lighten the burden of performing and documenting conflict inquiries upon timekeepers and support staff, as well as to maintain a record of every interaction and communication related to that process.  It is a component-driven system: many different modules integrate and allow it to function.  Listed in this chapter are definitions and descriptions of each component as well as instructions on installing and configuring the system in a fresh environment.  More information regarding the use of the defined components can be located in the proceeding chapters.
+
+
+Conflict Check System Component Definitions:
+* Outlook Message-Handling Component – This is the main component. It processes and handles all communications, and it interacts with the Database Component to record information about each conflict check and about each response.    Every message that is sent or received by Outlook is filed within a MAPI folder structure within the CCS mailbox.
+The CCS toolbar is available within Outlook and allows functions such as enabling or disabling the system, generating current reports, manually processing inbox items, refreshing the system ‘state’, and configuring system settings.  All server-side settings (even those that apply to scheduled scripting components) are configured within this user interface.
+* New Conflict Check Form – This is the custom Outlook form that originating attorneys submit in order to initiate a new conflict inquiry.  They can access this form via an icon    on their desktop, fill out the appropriate fields, and send it in to be processed—See Appendix C for the anatomy of this form.
+A drop-down list at the top of the form provides the names of all possible originators.  When a name is chosen and the form is sent, the system records this individual as the Conflict Check Originator.
+   * CCS_Reporter.vbs – This script is designed to be used in a scheduler.  Each time it runs, it queries the database to determine if there are any conflict checks that need to have reports or follow-ups sent for them.  These items will be generated after an allotted wait time which depends on the rush status of each conflict check.  The reports will go to the originating attorney and to their secretary, and the follow-up emails will go to each timekeeper (or to the accounting department) if they have not yet responded.
+   * CCS_MonitorOL.vbs – This script is designed to be used in a scheduler.  Each time it runs, it verifies that ‘Outlook.exe’ is running and restarts it if it isn’t.  If Outlook is running, it checks to see if there are any unprocessed items in the inbox.  If the latter is true, it sends a notification to the IT email address informing them of this situation.
+________________
+   * CCS_ArchiveMail.vbs – This script is designed to be used in a scheduler.  Each time it runs, it opens an Outlook data file (PST) for archiving old message items—the path to this Outlook data file is configured in the CCS settings from the Outlook Message-Handling Component CCS toolbar.  All message items stored within the CCS MAPI folder structure are moved to identical folders within the archive PST.
+Events during archiving, such as start and end times, are recorded in a log file, ‘CCS_MessageArchive.log’ located in the root ‘C:\’ directory.
+   * CCS_ADGroupSync.vbs – This script is designed to be used in a scheduler.  Each time it runs, it queries the CCS attorney and paralegal groups in Active Directory and adds any missing members to them.  Attorneys and paralegals are designated as such by their Active Directory OUs.  Therefore, newly-created user objects in these OUs will be automatically added to the appropriate CCS groups.
+   * Database Component – This is a SQL database running on a Microsoft SQL server backend.   All transactions that occur with the CCS are recorded in this database including every new conflict check and every conflict response.  Not all transactions, however, take place through or from the Outlook Message-Handling Component.  Some of the system scripts themselves interact directly with the database.
+________________
+Installation and Configuration:
+Because the Conflict Check System relies on various, independent components ranging across multiple machines, setting up a fresh ‘installation’ involves quite a few manual steps.  Follow the steps in this section to ensure a successful installation, or use the details herein as a reference to an existing installation.
+
+
+Active Directory Setup
+The CCS uses groups in Active Directory both for determining the roles of each participant as well as providing distribution lists for message delivery.  In most cases, these groups must be created and populated manually.
+Also, it keeps track of each conflict originator’s secretary.  All conflict inquires are sent both to the group of CCS recipients as well as to the secretary of the originator.  The secretary can request current reports from the system, and they receive, in addition to the originator, affirmative conflict responses.
+Each attorney or paralegal’s secretary is designated through the ‘Manager’ field in Active Directory.  Although it may seem backward, the attorney or paralegal’s ‘Manager’ field refers to their secretary.  It is done this way because the ‘Active Directory Users and Computers’ console does not have a secretary field, but it does have a field for the manager.  During the setup of each new attorney or paralegal, IT must populate this field manually with their secretary’s account.
+To configure the CCS Active Directory settings:
+   1. Create a new Organizational Unit that will hold all of the Active Directory objects related to the Conflict Check System.
+   2. Create a new user within this OU who will become the Conflict Check System admin user.  Make sure to configure an Exchange mailbox for it as this will be the mailbox to and from which all system messages are sent.
+   3. Create a separate distribution-type group each for attorneys, paralegals, accounting members, administrators, recipients, and timekeepers.
+   4. Create another distribution-type group and set as its only member the Conflict Check System admin user (configured above in step 2).
+   5. Set the membership for the groups created in step 3 as shown in this figure:
+
+
+  
+
+
+
+Anyone who is a member of the recipients group will receive new conflict inquiries as they go out.  The timekeepers and accounting groups should be members of the recipients group.  Any other individuals who wish to receive conflict inquiries for informational purposes can be members of this group as well.
+The timekeepers group will have as its members the attorneys group and the paralegals group.  The individual attorney and paralegal user objects will populate the attorneys and paralegals groups respectively.  Although this can be done manually, the CCS_ADGroupSynch.vbs script will automatically populate these latter groups based on the OU membership for all attorneys and paralegals.
+The administrators group should not be made a member of any of the other groups. It will contain those users who will maintain certain rights to interact with the system.
+
+
+Database Setup
+The CCS interacts with its database using trusted domain credentials.  With the database, a login is created that has a ‘Windows Authentication’ type and is linked to the CCS domain user account created in step 2 under ‘Active Directory Setup’ in this chapter.
+   1. Create the Database
+   1. Open the SQL Server Enterprise Manager console, and select the ‘Databases’ folder beneath the server where the new database will exist.
+   2. Click ‘Action’ → ‘New Database…’ and enter a descriptive name like “Conflict Check System”.  Click ‘OK’ to create the database.
+   1. Run the Table Creation Script
+   1. Click ‘Tools’ → ‘SQL Query Analyzer’.
+   2. Within the Query Analyzer, click ‘File’ → ‘Open’ and locate the ‘CCS_InstallTables.sql’ script in the CCS setup directory.
+   3. From the dropdown menu on the toolbar, select the database name created in step 1 above.
+   4. Click the ‘Run’ button     on the toolbar.  If the table creations were successful, there will be no error messages displayed in the bottom pane of the Query window.
+      1. Create the Login
+      1. Expand the ‘Security’ folder beneath the same server, right-click on ‘Logins’ and choose ‘New Login’.
+      2. Click the ‘…’ button on the general tab next to ‘Name’, and locate the CCS domain account created in step 2 under ‘Active Directory Setup’ in this chapter.
+      3. Under ‘Defaults’, select the database name created in above.
+      4. Click the ‘Database Access’ tab and put a check next to the database in the list of databases.  Put checkmarks next to ‘public’ and ‘db_owner’ under ‘Permit in Database Role’.
+      5. Click ‘OK to create the login and assign permissions to the CCS database.
+
+
+Message-Handling (Main Component) Setup
+The Message-Handling component is a Microsoft Outlook installation running under the CCS domain user account.  The Outlook profile is configured to receive and send messages to and from the email address for that user.  A set of Visual Basic modules and forms are installed with Outlook to handle message transactions, database transactions, and system settings.
+Additionally, there are a number of scripts that must be scheduled to run at allotted intervals using Windows Task Scheduler or a third-party scheduler.
+      1. Configure the Server Machine
+      1. Choose a machine on the domain.  Give local administrator permissions to the CCS domain user created in step 2 under ‘Active Directory Setup’ in this chapter.
+      2. Install Outlook 2003.  The Conflict Check System will not function with previous versions of Outlook.
+      3. If the operating system is XP SP2, disable the Windows Firewall.  Due to a design flaw in Outlook, messages will not be received predictably when they arrive in the mailbox because the firewall is blocking the port on which Outlook listens for new messages.
+      4. Logon as the CCS domain user.  Create a new Outlook profile configured to receive email at the appropriate email address for this user.  Do not enable ‘Cached Exchange Mode’.
+      1. Install and Configure the Message-Handling Module
+      1. Run the ‘CCS_InstallMessageHandling.vbs’ script to install the necessary files and settings on the machine.  At this time, you will be prompted for each required configuration setting.  For details on the individual files and settings that are installed, refer to Appendix A.
+      2. Open Outlook after the installation has completed.  The digital certificate created by the installation script will need to be activated for the VBA code to function.  
+      1. First, make sure the Macro security level is set to ‘High’.  To do this, Select ‘Tools’ → ‘Macro’ → ‘Security’, and select the ‘High’ radio button on the ‘Security Level’ tab.
+      2. Next, select ‘Tools’ → ‘Macro’ → ‘Visual Basic Editor’ or just type ‘Alt+F11’.  
+      3. With the VBA editor open, select ‘Tools’ → ‘Digital Signature’ and click the ‘Choose’ button.  Select ‘CCS_Cert’ from the list, and press ‘OK’. 
+      4. Close Outlook and choose ‘Yes’ when prompted to save the VBA project.  
+      5. Reopen Outlook again.  A security warning will pop up indicating the new VBA project is in place.  Select ‘Always trust macros from this publisher’, and click the ‘Enable Macros’ button.
+      1. The CCS toolbar should appear amongst the other Outlook toolbars.  Press the ‘Settings’ button, and verify that the wait times are desirable on the ‘Reporting & Followup’ tab.  Verify that all other settings are configured properly on the other tabs as well.  
+________________
+      1. Setup Scheduled Scripts
+Using either the built-in Windows task scheduler or a third-party tool, schedule each of the scripts in the ‘C:\’ directory.  
+      1. The CCS_Reporter.vbs script should be scheduled to run as often as possible.  The suggested interval is every sixty seconds: as soon as a conflict check’s age has surpassed the defined wait period, the report will be returned to the originator and the follow-up messages will be sent.
+      2. The CCS_MonitorOL.vbs script does not need to run as often, but should still be scheduled to run every five minutes or so.  This way, if Outlook is not running or messages are stuck in the inbox, not too much time will elapse before IT is notified.
+      3. The CCS_ArchiveMail.vbs script should be scheduled based upon the growth rate of the CCS mailbox.  The suggested time to run this is once a day some time between midnight and 6:00 AM; however, the script doesn’t adversely affect message processing while it is running, so it can be run during business hours if need be.
+      4. The CCS_ADGroupSync.vbs script also does not need to run often.  If it is scheduled to run once a day, it will most likely pick up any new attorneys or paralegals before they are expected to respond to conflict inquiries.
+
+
+New Conflict Check Form
+The new conflict check form is available in the ‘Organizational Forms’ library in Outlook.  However, the preferred method of making this form available is to deploy a shortcut to each desktop.  
+Refer to Appendix C for more information on the anatomy of this form.
+      1. Publish the Form to the Organizational Forms Library
+      1. Open the ‘new_cc.oft’ file from the CCS setup directory.  Click ‘Tools’ → ‘Forms’ → ‘Design This Form’.  The form view will switch to ‘Design Mode’.
+      2. Select the ‘(Hidden)’ tab.  On the ‘To:’ line, enter the email address of the distribution list you created in step 4 under ‘Active Directory Setup’ in this chapter.
+      3. Next to ‘Conflict Originators’, enter the name of the CCS attorneys group created in step 3 under ‘Active Directory Setup’.  If both attorneys and paralegals will be originating conflict checks, enter instead the name of the CCS timekeepers group.
+      1. Click ‘Tools’ → ‘Forms’ → ‘Publish Form’.
+      2. Next to ‘Look In’, select ‘Organizational Forms Library’.  Enter “Conflict Check” (or a similarly-descriptive name) for ‘Display Name’.  Make note of the ‘Message Class’ below ‘Form Name’, and click ‘Publish’.
+________________
+      1. Prepare and Deploy the New Conflict Check Shortcut Icon
+      1. Open the ‘Properties’ page for the ‘New Conflict Check’ shortcut in the setup directory.  Verify that the message class specified in the end of the ‘Target’ is the same message class noted in step b above.  
+      2. Copy the shortcut to all users’ desktops.  The easiest way to accomplish this is by adding an entry to the login script.
+________________
+Chapter 2: Operation
+
+
+Once installed, the Conflict Check System does not require much babysitting in order to operate properly.  However, as with all complex systems that integrate multiple components with other systems, there are times when it will need to be “massaged” to restore it to proper working order.
+Additionally, there are certain interactions that an administrative user is able to make with the system that normal users are not able to do.
+
+
+Conflict Check Generation
+Typically, the process begins when a new or existing client engages an attorney to open a new matter.  Before anything else is done, the attorney must initiate a conflict inquiry as required by the malpractice insurer:
+      1. The attorney or their secretary will open the New Conflict Check Form, and fill out the required fields.  They will also indicate whether this will be a ‘Rush’ or a ‘Normal’ inquiry.
+      2. When they send the form, it will be received by the Outlook Message-Handling Component.  
+      3. The Outlook Message-Handling Component creates a new entry in the Database, and retrieves a unique Conflict Check Number.
+      4. The Conflict Check Number is inserted into the subject line of a new message, and the conflict inquiry text is inserted into the body.
+      5. The message is delivered to all CCS recipients (including those who are not expected to respond) as well as the originator’s secretary.
+
+
+Conflict Check Responses
+All members of the CCS timekeepers group are expected to respond, and at least one member of the CCS accounting group must respond as well.  Responses can be sent either from Outlook or from a Blackberry in the following forms:
+      * Replies with the words “No”, “None”, or “No Conflict” (not case-sensitive) on the first line of the body will be counted as no conflict.
+      * All other replies—except the word “report”—will be counted as an affirmative conflict response.
+      * When an affirmative conflict is indicated, the responder must indicate their reason within parenthesis:
+e.g. “yes (we represent the adverse party)”
+      * If an affirmative conflict response is indicated, the system will notify the conflict check originator and their secretary immediately.  The reason for conflict, which was indicated within the parenthesis, is included in this notification.
+
+
+________________
+Reporting and Follow-up
+Based upon the wait times configured in the CCS Settings and the ‘Rush’ status of each conflict check, a set of reports and follow-up messages are generated automatically by the system.  The originator and their secretary also have the ability to request a ‘Current’ report at any time.
+      * Each time the CCS_Reporter.vbs script runs, conflict inquiries’ ages are compared against the wait times defined in the CCS settings.
+      * Depending on the ‘Rush’ status of each one, a ‘First’ report and a ‘Second’ report will be sent back to the originator and to their secretary after the allotted wait times have elapsed.
+      * An ‘Initial’ follow-up and a ‘Final’ follow-up will be delivered to those timekeepers and accounting members who have not yet responded to the inquiry in question.  Just like the reports, the follow-ups will go out after the defined wait periods depending on the ‘Rush’ status.  Note: once a single response has been received from accounting, no follow-ups will be delivered to any remaining members.
+      * When all timekeepers and at least one member of the accounting department has responded to a particular conflict check, a ‘Final’ report will be delivered to the originator and to their secretary.
+      * At any point after originating a new conflict inquiry, the originator or their secretary can request a ‘Current’ report by replying to the conflict inquiry with the word ‘report’ in the body.  A report will be generated and returned immediately, and the results will reflect up-to-date statistics (see Appendix B for the anatomy of a report).
+      * A member of the CCS administrators group can also request a ‘Current’ report for any conflict inquiry.  To do this, create a new message (or reply to an existing conflict check) with the ‘CC#’ in the subject, and the word ‘report’ in the body.
+
+
+Administrative Functions
+Besides the ability to request a report for any conflict check through email, there are a number of other functions that administrators can manage through the Outlook Message-Handling Component.  The CCS toolbar has five buttons that perform the following:
+      * ‘Push’ is used to manually activate the message processing engine.  If items are stuck in the inbox, this function will cause them to go through.
+      * ‘Settings’ is used to display the ‘Conflict Check System Settings’ form.  The form consists of four tabs:
+      * ‘Reporting & Followup’ is where the wait times are configured.  These determine when (in hours after creation) the reports and follow-ups will be sent to the appropriate people.
+      * ‘Servers & Files’ is where the database information is specified and where the file and directory paths for the reports and archive PST are defined.
+      * ‘Groups’ is where the CCS domain groups are specified.  The purpose of each of these groups is described in Chaper 1 under “Active Directory Setup”.
+      * ‘Admin Settings’ is where administrative configurations are located.  The ‘Error Reporting Method’ determines how IT will be notified if a problem arises:  ‘Alert’ will pop up a dialog box on the system so that someone monitoring Outlook will see it right away, and ‘Email’ will send the message to the address specified under ‘IT Reporting Email Group/Address’.  If ‘Automatically Disable System When Errors Occur’ is checked, then the system will remain disabled until manually re-enabled by an administrator (using the ‘Disable’ button described below).  For more information on CCS error handling, refer to Appendix D.  
+The ‘Conflict Check System Admins Group’ is where the CCS administrators domain group is specified.  Members of this group have privileges such as the ability to request a report from the system for any Conflict Check Number.
+      * ‘Refresh/Resend’ is used to refresh the locally-cached list of timekeepers and accounting members and to send messages stored in the ‘ConflictCheckPendingDelivery’ folder in the CCS mailbox.  
+If ever the system is unable to resolve an address for a recipient, it will file the message into the ‘ConflictCheckPendingDelivery’ folder and send a notification to IT.  Assuming IT has corrected the problem with the address resolution, clicking the ‘Refresh/Resend’ button will push these messages out.
+      * ‘Report’ is used to request a ‘Current’ report for any conflict check.  Enter the numeric portion of the ‘CC#’ into the dialog box, and a browser will display the report when it is returned.  From here, it can be saved and distributed.
+      * ‘Disable System’ does what it says.  When the system is disabled, the button text will change to ‘System is Currently Disabled – Enable System’.  The system will remain disabled until it’s manually re-enabled here regardless of actions such as closing Outlook or restarting the computer.  While in this state, incoming messages will not be processed—they will remain in the inbox.  The scripts will not be run, and thus no outgoing messages will be sent, and messages will not be archived to PST.
+When the system is re-enabled, any messages that have collected in the inbox must be manually processed by clicking the ‘Push’ button.
+
+
+Scheduled Scripts
+As described in previous sections, the Conflict Check System includes a number of scripts which must be scheduled either through the built-in Windows Task Scheduler or through a third-party tool.  Depending on the functionality of each script, their suggested scheduling frequency varies, but it is the job of the system administrator to configure these intervals.
+The scripts generate automatic reports for originators, deliver follow-up reminders to delinquent responders, synchronize the CCS domain groups, archive old messages, and monitor Outlook and its inbox.  More detail about each script and its functionality is available in Chapter 1:  Conflict Check System Component Definitions.
+________________
+Appendix A:  Message-Handling Component
+A Breakdown of Files and Settings
+
+
+Overview
+The Outlook Message-Handling Component is far-and-away the most complex ‘object’ within the web of objects that make up the Conflict Check System.  The component itself has multiple smaller ‘modules’—files, registry settings, applications, and scripts—that come together to form this integral part.
+Basically, it exists as an Outlook installation (2003 or higher) on a PC ‘server’ machine.  The Outlook profile is tied to the Exchange mailbox for the CCS user account with which the system operates.  A collection of Visual Basic for Applications (VBA) modules and forms integrated with the Outlook application handle most of the messages and database transactions.  Additionally, a third-party scheduling tool is used to run the CCS scripts which themselves perform specialized functions.  There are a number of underlying registry settings and files that support the operation of the abovementioned items.
+Below is a basic diagram of the Outlook Message-Handling Component:
+
+
+  
+
+
+
+Not shown in this diagram are the connections to the database, to Active Directory, to Exchange, and to any files that are located on remote servers or machines.  Both the VBA modules and the scripts utilize these types of connections.
+________________
+Registry Settings
+Items stored in the registry include all settings configurable through the CCS toolbar in Outlook:  reporting and follow-up wait times, the reports directory, archive PST pathname, CCS domain group names, the SQL server and database name, and the IT email address.  Even the state of the system—enabled or disabled—is stored here.  The registry key where these are located is:
+[HKEY_CURRENT_USER\Software\APSLaw\ConflictCheckSystem\]
+
+
+Scripts and Support Files
+By default, most files are installed to or created in the root ‘C:\’ directory.  Technically, however, the scripts can be stored anywhere—even on a remote machine—because the third-party scheduling software can run them regardless of where they are located.  However, they must be run ON the CCS machine.
+The file that contains the VBA forms and modules, ‘VbaProject.OTM’, is installed in the CCS user’s profile ‘Application Data’ folder for Outlook.  For example, if the username is “CCSUser” then the VBA file would be installed in:
+C:\Documents and Settings\CCSUser\Application Data\Microsoft\Outlook
+Some files are created automatically when the system runs.  For instance, each time a new conflict check is received, a locally-cached list for each CCS group’s members is created or modified in the root ‘C:\’ directory.  These list files are named after the CCS group name with a ‘.CCS’ extension.  The purpose of having the lists is to lessen the number of transactions taking place over the network.  Another example is the archive log: each archive transaction, such as the start time and date, is logged in a file named ‘CCS_MessageArchive.log’.
+________________
+Appendix B:  Anatomy of a Report
+
+
+Sample Report
+
+
+  
+
+________________
+Report Components
+      1. The Title indicates what type of report it is:  First, Second, Final or Current.
+      2. The Inquiry Number is the same unique number applied to the conflict inquiry when it is originated.  This is also the ‘CC#’ in the subject of all messages related to that inquiry, and it is the primary key identifying the conflict inquiry as a record in the database.
+      3. The Date & Time of Report indicates when the report was generated or created.
+      4. The Report ID is a serial number unique to each report.  It is also used to name the report html file.  It is a combination of the CC#, the report type, and the unique report identifier number.
+      5. The Conflict Check Information Block summarizes the conflict inquiry and distinguishes it visually from other reports.  Most importantly, it provides the client name, the originating attorney, and the date and time that the conflict inquiry was originated.
+      6. The Timekeepers Summary totals the number of attorney and paralegal responses for those who have a conflict, those who have not responded, and those who don’t have a conflict.
+      7. The Accounting Summary indicates either ‘Conflict’, ‘No Conflict’ or ‘Not Yet Responded’ depending on the number and type of responses from the accounting department.  If more than one accounting member responded with no conflict, the Accounting Summary shows ‘No Conflict’, and if at least one member of accounting has a conflict, then it shows ‘Conflict’.
+      8. Timekeeper Conflicts lists individual attorneys or paralegals who have indicated they have a conflict.  Next to each name is listed the description of the conflict they provided within parentheses in their response message.
+      9. Accounting Responses lists the individual accounting-member responses along with the reason they provided within the parentheses.  If no response has been received, that is displayed instead.
+      10. No Response From lists those timekeepers who have not responded.
+      11. No Conflict lists those timekeepers who have indicated they do not have a conflict.
+________________
+Appendix C:  Anatomy of the Conflict Check Form
+
+
+Overview
+The New Conflict Check Form is an Outlook form which is installed in and accessible from the Organizational Forms library and via the desktop shortcut (see Chaper 1:  Installation and Configuration for more information on deploying the form).
+Underlying the production version of the form is a ‘Design View’ which is accessible through the ‘Tools’ → ‘Forms’ menu in Outlook.
+Below are the components of the form that a CCS administrator should be familiar with:
+
+
+  
+
+________________
+Form Components
+A form’s ‘life’ is divided into two ‘moments’:  when the form is first opened and when the form is sent.
+When the Form is First Opened…
+      * The Choose Originating Attorney dropdown menu (A) is populated via Active Directory with the members of the group specified on the Conflict Originators line (D).
+      * The TKPR Secretaries menu (E), the TKPR Email menu (F), and the Secretary Email menu (G), are populated via Active Directory based upon the members of the Conflict Originators group as well.  As described in Chapter 1:  Installation and Configuration, each timekeeper’s secretary is held in the ‘Manager’ field in Active Directory (Please refer to that chapter for more information).
+When the Form is Sent…
+      * The Conflict Inquiry Information that the user completed (H) is verified:  certain fields (indicated with asterisks) are required and must be completed before the form can be sent.  The user is prompted with a dialog when they fail to do so.
+      * The name chosen in the Choose Originating Attorney list (A) is matched up with corresponding TKPR Secretaries, TKPR Email, and Secretary Email items (E, F, and G).
+      * All of the above are sent along with the form to the CCS User Address specified in the ‘To:’ field (B) with the Message Subject “New” (C).  This message subject is a key word that the Outlook Message-Handling Component uses to determine that this is meant to be a new conflict inquiry.
+________________
+Appendix D:  Tips & Troubleshooting
+
+
+Q:        One of the attorneys originated a conflict check, and they received an ‘Affirmative Response’ back from another attorney.  The other attorney says she responded “No Conflict.”  Is there any way to clear this up?
+A:        Even though the responding attorney may have thought they responded properly to indicate that they did not have a conflict, they entered their response incorrectly.  To verify exactly what their response was, open the conflict check system mailbox, and locate the ‘ConflictCheckResponses’ folder.  Sort the messages by sender, and locate the response to the specific CC# by the message subject.  The body of the message will contain their response.  Remember, all replies other than the words “No”, “None”, or “No Conflict” (not case sensitive) will be treated as an affirmative response.
+Q:          There is a temporary associate joining the firm, but they won’t be replying to conflict inquiries.  How do I keep them from being automatically added to the CCS attorneys group?
+A:        In order to avoid having users automatically added to the CCS attorney or paralegal groups, they must not be members of any attorney or paralegal OUs in Active Directory.  Move them to another OU, and manually delete them from the aforementioned groups, and they will not be present on any more conflict inquiries.
+
+
+Q:        We don’t want the members of the attorney or paralegal OUs to automatically be added to the CCS attorney and paralegal groups anymore.  How do I stop this from happening entirely?
+A:        Simply disable or unscheduled the CCS_ADGroupSync.vbs script.  This script is what causes the OUs to synchronize with the CCS groups.
+
+
+Q:        One of the attorneys has left the firm, but their name is still showing up on some of the conflict inquiry reports as having not responded.  How do we stop this from happening?
+A:        As soon as their Active Directory domain user account is removed from the appropriate CCS group, they will no longer be considered a responder on any NEW conflict inquiries that go out.  They will, of course, always be present on any reports generated for conflict inquiries that were originated during their tenure.
+Remember that this attorney must also be removed from the attorney OU, or they will automatically be re-added to the CCS group by the CCS_ADGroupSync.vbs script.
+
+
+Q:        Someone claimed they generated a new conflict inquiry, but it was never delivered to all the recipients.  I checked the CCS inbox, and the message was not there until I clicked into the inbox.  Then, it appeared and was processed.  Why the delay?
+A:        Due to a design flaw associated with Windows XP Service Pack 2, Outlook does not always receive messages in the mailbox right away.  The Windows Firewall, an addition incorporated with SP2, blocks the port that Outlook listens on for Exchange notifications.  When a new message is available in an Exchange mailbox, Outlook does not become aware of it right away.  Unfortunately, this port number changes each time Outlook is opened, so the port cannot be ‘allowed’ in the firewall settings.  The easiest solution is to turn off the Windows Firewall on the machine if SP2 is present.
+Additionally, make sure ‘Cached Exchange Mode’ is disabled.  This can also add a minor, albeit uniform, delay to message processing.
+
+
+Q:        I received an email error from the Conflict Check System indicating that something had gone wrong.  It referenced an iManage document number that contained a list of error codes.  What is this all about?
+A:        The system is designed to ‘catch’ as many error conditions as possible.  When it does so, it notifies IT based upon the settings configured in the Outlook Message-Handling Component.  If configured to notify IT via email, a message is sent to the email address with the error code.  After referencing the error code in the provided iManage document, presumably the situation can be investigated and repaired.
+It may also be the case that when such an error occurs, the system automatically becomes disabled.  This is a precautionary step so that further messages received before the error situation is repaired do not compound the issue.  Remember:  the system must be re-enabled after the error condition is repaired.  Refer to Chapter 2 for more information.
+
+
+Q:        One of the secretaries is out sick, and their attorney has asked the stand-in for a conflict check report.  She received a message back from the system saying she is not allowed to request reports.  How can I provide her with one?
+A:        Members of the CCS Administrators group (configured in the Outlook Message-Handling Component settings) can request ‘Current’ reports for any CC#.  One way to do so is to send an email to the CCS user email address with the CC# in the subject, and the word “report” in the body.  The returned, attached report can be forwarded to any interested parties.  
+Another way is to log on to the Outlook Message-Handling Component, click the ‘Report’ button on the CCS toolbar, and enter the numeric portion of the CC#.  The report will be displayed on screen and can be saved and forwarded to the requestor.
+
+
+Q:        One of the paralegals received a message back from the system indicating that ‘replies were not accepted from their email address’.  Why did this happen?
+A:        Only members of the CCS timekeepers or accounting groups can reply to conflict inquiries.  These groups are indicated in the Outlook Message-Handling Component settings on the ‘Groups’ tab.  The CCS timekeepers group contains, at the very least, two other ‘nested’ groups: the CCS attorneys group and the CCS paralegals group.  These latter groups are the ones that contain the individual users.  The CCS accounting group contains individual members of the accounting department who can respond as well.  Make sure that anyone who should be able to respond is a member of any of these groups.
+________________
+Q:        A secretary asked me if I had a copy of the ‘First’ report that was created for a conflict check from January.  Can I obtain this copy?
+A:        A copy of each conflict check reports is kept in the directory specified in the Outlook Message-Handling Component settings on the ‘Servers & Files’ tab.  The reports are all named with a unique serial number like the following:
+
+
+  
+
+The Conflict Check Number is the same number used throughout the system to uniquely identify each conflict check.  The Report Type distinguishes ‘First’, ‘Second’, ‘Current’ and ‘Final’ reports (1, 2, A, and F).  The Report ID Number is unique to all reports. 
+
+
+Q:        A secretary asked me if I could find out whether or not there were any existing conflict inquiries for a particular client and matter.  She gave me the client’s name, the nature of service, and the adverse party.  How can I check this?
+A:        Since the database stores all this information, the easiest way to do this is by using the SQL Query Analyzer.  
+Open the ‘SQL Server Enterprise Manager’ console, and select ‘Tools’ → ‘SQL Query Analyzer’.  For the login dialog, make sure the ‘SQL Server’ indicated is the appropriate one, and fill out the ‘Login Name’ and ‘Password’ with the appropriate credentials.
+Once logged in, select the CCS database from the dropdown on the toolbar.  In the query window, enter a ‘Select’ query on the ‘ClientName’, ‘NatureOfService’ or ‘AdverseParties’ fields.  For example, to find all conflict inquiries where the client name contains “Rhode Island”, the query might be:
+SELECT * FROM ConflictCheck WHERE ClientName LIKE ‘%rhode%’;
+Using the ‘LIKE’ operator returns all records where the ‘ClientName’ field has a string similar to the indicated text.  The ‘%’ before and after the word are required wild cards.
+
+
+________________
+Q:        There is a member of the litigation support staff who bills a lot of time but is not an attorney or a paralegal, and it was decided that they should be able to respond to conflict inquiries.  How do I add them to this role without putting them in the attorney or paralegal OU in Active Directory?
+A:        Simply add them manually to the CCS timekeepers group.  All members of this group can respond to conflict inquiries.
+
+
+Q:        I received an error from the Conflict Check System that said ‘…Ambiguous Recipient’ in the subject.  Apparently, a message the system was trying to send didn’t get sent.  What does this mean?
+A:        The system attempts to send all automatic messages based upon the SMTP (email) address it finds in Active Directory.  If there is no such address, then it will attempt to use the display name, or Exchange Server, address instead.  Whereas the SMTP address is, by nature, unique and not subject to resolution conflicts, the display name may resemble another user’s display name too closely so that the system cannot resolve it to a unique individual; a human user would normally see a dialog pop up at this point with a list of names to pick from.  However, the Conflict Check System is not capable of deciding from a list in such a fashion, so it alerts IT instead.
+The ‘non-sendable’ message is temporarily stored in a folder within the CCS mailbox called ‘ConflictCheckPendingDelivery’.  Administrators can resolve the address resolution conflict by configuring an SMTP address for the user account in Active Directory.  After this step, they can log on to the Outlook Message-Handling Component, and click the ‘Refresh/Resend’ button.
