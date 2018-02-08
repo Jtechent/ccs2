@@ -4,29 +4,35 @@ const sequelize = new Sequelize('ccs_test', 'postgres', 'postgres', {
 });
 
 const Inquiry = sequelize.define('inquiry', {
-    client: {type: Sequelize.STRING,
-	     allowNull: false},
-    originator: {type: Sequelize.STRING,
-		 allowNull: false},
-    service: Sequelize.STRING,
-    adverse_parties: Sequelize.STRING,
-    origin_time: {type: Sequelize.DATE,
-		  defaultValue: Sequelize.NOW}
+    
+    client:
+    Sequelize.STRING,
+
+    originator:
+    Sequelize.STRING,
+
+    service:
+    Sequelize.STRING,
+
+    adverse_parties:
+    Sequelize.STRING
 });
 
 const Response = sequelize.define('response', {
-    id: {type: Sequelize.INTEGER,
-	 primaryKey: true,
-	 autoIncrement: true},
-    responder: {type: Sequelize.STRING,
-		allowNull: false},
-    summary: {type: Sequelize.ENUM('no response',
-				   'no conflict',
-				   'conflict'),
-	      allowNull: false},
-    explanation: Sequelize.STRING,
-    response_time: {type: Sequelize.DATE,
-		    defaultValue: Sequelize.NOW}
+
+    inquiry:
+    Sequelize.INTEGER,
+    
+    responder:
+    Sequelize.STRING,
+
+    summary:
+    Sequelize.ENUM('no response',
+		   'no conflict',
+		   'conflict'),
+    
+    explanation:
+    Sequelize.STRING,
 });
 
 Inquiry.findById(1).then(inquiry => {
