@@ -1,40 +1,53 @@
-const Sequelize = require('sequelize');
-const sequelize = new Sequelize('ccs_test', 'postgres', 'postgres', {
-    dialect: 'postgres'
-});
+/*
+ * the SQL definitions
+ */
 
-const Inquiry = sequelize.define('inquiry', {
-    
-    client:
-    Sequelize.STRING,
+const Sequelize = require("sequelize");
 
-    originator:
-    Sequelize.STRING,
+const sql = new Sequelize(
+    "ccs_test",
+    "postgres",
+    "postgres",
+    {dialect: "postgres"}
+);
 
-    service:
-    Sequelize.STRING,
+const Inquiry = sql.define(
+    "inquiry", {
+	client:
+	Sequelize.STRING,
+	
+	originator:
+	Sequelize.STRING,
+	
+	service:
+	Sequelize.STRING,
+	
+	adverse_parties:
+	Sequelize.STRING
+    }
+);
 
-    adverse_parties:
-    Sequelize.STRING
-});
+const Response = sequelize.define(
+    "response", {
+	inquiry:
+	Sequelize.INTEGER,
+	
+	responder:
+	Sequelize.STRING,
+	
+	summary:
+	Sequelize.ENUM("no response",
+		       "no conflict",
+		       "conflict"),
+	
+	explanation:
+	Sequelize.STRING,
+    }
+);
 
-const Response = sequelize.define('response', {
-
-    inquiry:
-    Sequelize.INTEGER,
-    
-    responder:
-    Sequelize.STRING,
-
-    summary:
-    Sequelize.ENUM('no response',
-		   'no conflict',
-		   'conflict'),
-    
-    explanation:
-    Sequelize.STRING,
-});
-
-Inquiry.findById(1).then(inquiry => {
-    console.log(inquiry.get({plain:true}))
-});
+// little test
+Inquiry.findById(1).then(
+    inquiry => {
+	console.log(inquiry.get({plain:true}))
+    }
+);
